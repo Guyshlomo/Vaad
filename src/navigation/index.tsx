@@ -88,12 +88,23 @@ export const RootNavigator = () => {
 
         // Check profile if session exists
         if (session?.user) {
+          // Fast-path: if we already completed profile for this user id, don't show ProfileSetup again.
+          const readyUserId = await AsyncStorage.getItem(STORAGE_KEYS.profileReadyUserId);
+          if (readyUserId === session.user.id) {
+            setHasProfile(true);
+            return;
+          }
+
           const { data } = await supabase
             .from('profiles')
             .select('id')
             .eq('id', session.user.id)
             .single();
           setHasProfile(!!data);
+
+          if (data?.id) {
+            await AsyncStorage.setItem(STORAGE_KEYS.profileReadyUserId, session.user.id);
+          }
         } else {
           setHasProfile(false);
         }

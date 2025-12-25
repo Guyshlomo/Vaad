@@ -179,6 +179,26 @@ export const IssueDetailsScreen = () => {
         comment: `הסטטוס שונה ל-${getStatusLabel(newStatus)}`,
       });
 
+      // 3. Push notification to building (best-effort)
+      try {
+        // Resolve building_id from issue (already loaded)
+        const buildingId = issue?.building_id;
+        if (buildingId) {
+          await supabase.functions.invoke('send-push', {
+            body: {
+              type: 'issue_status',
+              building_id: buildingId,
+              title: 'עדכון סטטוס תקלה',
+              body: `${issue?.category || 'תקלה'} • ${getStatusLabel(newStatus)}`,
+              data: { issueId, status: newStatus, kind: 'issue_status' },
+              exclude_user_id: user?.id,
+            },
+          });
+        }
+      } catch (e) {
+        console.log('Failed to send push (issue_status):', e);
+      }
+
       // Refresh
       fetchIssueDetails();
       Alert.alert('עודכן', 'סטטוס התקלה עודכן בהצלחה');

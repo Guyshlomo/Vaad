@@ -168,6 +168,22 @@ export const CreateIssueScreen = () => {
         if (mediaError) throw mediaError;
       }
 
+      // 4. Push notification to building (best-effort)
+      try {
+        await supabase.functions.invoke('send-push', {
+          body: {
+            type: 'issue_created',
+            building_id: profile.building_id,
+            title: 'דיווח תקלה חדש',
+            body: `${category} • ${location || 'כללי'}`,
+            data: { issueId: issue.id, kind: 'issue_created' },
+            exclude_user_id: user.id,
+          },
+        });
+      } catch (e) {
+        console.log('Failed to send push (issue_created):', e);
+      }
+
       Alert.alert('תודה', 'הדיווח התקבל בהצלחה', [
         { text: 'אישור', onPress: () => navigation.goBack() }
       ]);

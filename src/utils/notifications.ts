@@ -3,12 +3,6 @@ import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
 
 export async function registerForPushNotificationsAsync(userId: string) {
-  // Expo Go has limited/removed support for remote push notifications (SDK 53+),
-  // and can throw runtime errors. Skip registration in Expo Go.
-  if (Constants.appOwnership === 'expo') {
-    return;
-  }
-
   const Notifications = await import('expo-notifications');
   const Device = await import('expo-device');
 
@@ -57,6 +51,7 @@ export async function registerForPushNotificationsAsync(userId: string) {
       token = (await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : (undefined as any))).data;
     } catch (e) {
       console.log('Error getting token', e);
+      // Expo Go may fail to get a usable token (SDK 53+). We'll just skip saving.
       return;
     }
   } else {

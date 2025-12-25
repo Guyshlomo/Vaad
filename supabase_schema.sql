@@ -15,8 +15,9 @@ alter table public.buildings enable row level security;
 create table public.units (
   id uuid primary key default uuid_generate_v4(),
   building_id uuid references public.buildings(id) on delete cascade not null,
-  floor text not null,
-  apartment_number text not null,
+  -- Committee members may not live in the building (allow NULLs).
+  floor text,
+  apartment_number text,
   created_at timestamptz default now()
 );
 
@@ -200,6 +201,75 @@ begin
 end;
 $$;
 
+-- Complete profile after auth (creates profiles + optional unit). Uses invite (phone->building/role/name).
+-- Supports committee users who may NOT live in the building.
+create or replace function complete_profile(
+  phone_number text,
+  floor_text text default null,
+  apartment_text text default null,
+  lives_in_building boolean default true
+)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  invite_record record;
+  created_unit_id uuid;
+  profile_row public.profiles%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select * into invite_record
+  from public.invited_residents
+  where phone = phone_number
+  limit 1;
+
+  if not found then
+    raise exception 'User is not invited';
+  end if;
+
+  created_unit_id := null;
+
+  if lives_in_building then
+    if coalesce(trim(floor_text), '') = '' or coalesce(trim(apartment_text), '') = '' then
+      raise exception 'Missing floor/apartment';
+    end if;
+
+    insert into public.units (building_id, floor, apartment_number)
+    values (invite_record.building_id, floor_text, apartment_text)
+    returning id into created_unit_id;
+  else
+    -- Committee can exist without apartment/floor; keep a units row with NULL fields.
+    if invite_record.role = 'committee' then
+      insert into public.units (building_id, floor, apartment_number)
+      values (invite_record.building_id, null, null)
+      returning id into created_unit_id;
+    end if;
+  end if;
+
+  insert into public.profiles (id, phone, full_name, building_id, unit_id, role)
+  values (auth.uid(), phone_number, invite_record.name, invite_record.building_id, created_unit_id, invite_record.role)
+  on conflict (id) do update set
+    phone = excluded.phone,
+    full_name = excluded.full_name,
+    building_id = excluded.building_id,
+    unit_id = excluded.unit_id,
+    role = excluded.role
+  returning * into profile_row;
+
+  -- Ensure user_settings exists
+  insert into public.user_settings (user_id, updated_at)
+  values (profile_row.id, now())
+  on conflict (user_id) do nothing;
+
+  return row_to_json(profile_row);
+end;
+$$;
+
 -- Issues:
 -- View: Residents of building
 -- Insert: Residents of building
@@ -319,8 +389,22 @@ create policy "Delete own settings"
   using (user_id = auth.uid());
 
 -- Push Tokens: Only owner
-create policy "Manage own push tokens"
-  on public.push_tokens for all
+drop policy if exists "Manage own push tokens" on public.push_tokens;
+
+create policy "Read own push tokens"
+  on public.push_tokens for select
+  using (user_id = auth.uid());
+
+create policy "Insert own push tokens"
+  on public.push_tokens for insert
+  with check (user_id = auth.uid());
+
+create policy "Update own push tokens"
+  on public.push_tokens for update
+  using (user_id = auth.uid());
+
+create policy "Delete own push tokens"
+  on public.push_tokens for delete
   using (user_id = auth.uid());
 
 -- Storage Policies (Buckets need to be created in Supabase Dashboard: 'issue-images')

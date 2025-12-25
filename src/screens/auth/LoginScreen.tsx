@@ -12,6 +12,7 @@ import { AUTH_MODE } from '../../lib/config';
 export const LoginScreen = () => {
   const [phone, setPhone] = useState('');
   const [fullName, setFullName] = useState(''); // Used if we want to pre-fill profile later
+  const [pin, setPin] = useState('');
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [loading, setLoading] = useState(false);
@@ -22,6 +23,13 @@ export const LoginScreen = () => {
     if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
     if (!cleaned.startsWith('972')) cleaned = '972' + cleaned;
     return '+' + cleaned;
+  };
+
+  const emailFromPhone = (formattedPhone: string) => {
+    // Temporary MVP: represent phone login as an internal email for Supabase email/password auth.
+    // Example: +9725... -> u_9725...@vaad.local
+    const digits = formattedPhone.replace('+', '');
+    return `u_${digits}@vaad.local`;
   };
 
   const checkInviteAndLogin = async () => {
@@ -59,6 +67,59 @@ export const LoginScreen = () => {
           building_id: invite.building_id,
         })
       );
+
+      if (AUTH_MODE === 'pin') {
+        if (!pin || pin.length < 4) {
+          Alert.alert('שגיאה', 'אנא הזן קוד PIN (לפחות 4 ספרות)');
+          return;
+        }
+
+        const email = emailFromPhone(formattedPhone);
+
+        // 1) Try sign-in
+        let { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password: pin,
+        });
+
+        // 2) If user doesn't exist yet, create it (temporary MVP).
+        if (error) {
+          const msg = String(error.message || '').toLowerCase();
+          const invalidCreds =
+            msg.includes('invalid login credentials') ||
+            msg.includes('invalid') ||
+            msg.includes('not found');
+
+          if (invalidCreds) {
+            const signUp = await supabase.auth.signUp({
+              email,
+              password: pin,
+              options: {
+                data: { phone: formattedPhone },
+              },
+            });
+
+            if (signUp.error) throw signUp.error;
+
+            // If email confirmations are enabled, session may be null. Tell the user what to change.
+            if (!signUp.data.session) {
+              Alert.alert(
+                'נדרש שינוי בהגדרות Supabase',
+                'מצב PIN יוצר משתמש Email פנימי. כדי שיתקבל Session מיד, יש לכבות אימות Email:\nSupabase → Authentication → Settings → Email confirmations = OFF\n\nלאחר מכן נסה שוב.'
+              );
+              return;
+            }
+
+            data = signUp.data;
+            error = null;
+          } else {
+            throw error;
+          }
+        }
+
+        if (error) throw error;
+        return;
+      }
 
       if (AUTH_MODE === 'anonymous') {
         // No SMS. Use anonymous auth (requires no phone provider).
@@ -137,19 +198,40 @@ export const LoginScreen = () => {
     <ScreenWrapper style={styles.container}>
       <View style={styles.content}>
         <Typography variant="h1" align="center">התחברות</Typography>
+
+        {AUTH_MODE === 'anonymous' && (
+          <Typography
+            variant="body"
+            align="center"
+            style={{ marginTop: 8, marginBottom: 16 }}
+          >
+            שים לב: מצב התחברות אנונימי פעיל. במצב זה התנתקות/התחברות יכולה ליצור משתמש חדש ולכן תידרש השלמת פרופיל מחדש.
+            מומלץ לעבור למצב התחברות טלפון (OTP) לפרודקשן.
+          </Typography>
+        )}
+
+        {AUTH_MODE === 'pin' && (
+          <Typography variant="body" align="center" style={{ marginTop: 8, marginBottom: 16 }}>
+            מצב PIN זמני (MVP): התחברות עם מספר טלפון + PIN שהוועד נותן לך. לא מאובטח — בהמשך נעבור לאימות SMS.
+          </Typography>
+        )}
         
         {step === 'phone' ? (
           <>
             <Typography variant="body" align="center" style={{ marginBottom: 24 }}>
-              הזינו את מספר הטלפון והשם שלכם להתחברות
+              {AUTH_MODE === 'pin'
+                ? 'הזינו מספר טלפון וקוד PIN'
+                : 'הזינו את מספר הטלפון והשם שלכם להתחברות'}
             </Typography>
             
-            <Input
-              label="שם מלא"
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="ישראל ישראלי"
-            />
+            {AUTH_MODE !== 'pin' && (
+              <Input
+                label="שם מלא"
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="ישראל ישראלי"
+              />
+            )}
             
             <Input
               label="מספר טלפון"
@@ -159,11 +241,22 @@ export const LoginScreen = () => {
               placeholder="050-1234567"
             />
 
+            {AUTH_MODE === 'pin' && (
+              <Input
+                label="קוד PIN"
+                value={pin}
+                onChangeText={setPin}
+                keyboardType="number-pad"
+                placeholder="1234"
+                secureTextEntry
+              />
+            )}
+
             <Button
-              title="המשך"
+              title={AUTH_MODE === 'pin' ? 'התחבר' : 'המשך'}
               onPress={checkInviteAndLogin}
               loading={loading}
-              disabled={!phone || !fullName}
+              disabled={AUTH_MODE === 'pin' ? !phone || !pin : !phone || !fullName}
             />
           </>
         ) : (

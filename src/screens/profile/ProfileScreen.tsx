@@ -9,6 +9,9 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
 import { Moon, Sun, User, LogOut, Trash2, Shield } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from '../../utils/storageKeys';
+import { AUTH_MODE } from '../../lib/config';
 
 export const ProfileScreen = () => {
   const { theme, themeType, toggleTheme } = useTheme();
@@ -18,7 +21,16 @@ export const ProfileScreen = () => {
   const handleLogout = () => {
     Alert.alert('התנתקות', 'האם אתם בטוחים שברצונכם להתנתק?', [
       { text: 'ביטול', style: 'cancel' },
-      { text: 'התנתק', onPress: signOut, style: 'destructive' },
+      {
+        text: 'התנתק',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await AsyncStorage.removeItem(STORAGE_KEYS.profileReadyUserId);
+          } catch {}
+          await signOut();
+        },
+      },
     ]);
   };
 
@@ -33,7 +45,7 @@ export const ProfileScreen = () => {
           פרופיל אישי
         </Typography>
         <Typography variant="body" color={theme.textSecondary}>
-           {user?.phone}
+           {user?.phone || user?.email}
         </Typography>
       </View>
 
@@ -67,6 +79,12 @@ export const ProfileScreen = () => {
       </View>
 
       <View style={styles.footer}>
+        {AUTH_MODE === 'anonymous' && (
+          <Typography variant="caption" align="center" color={theme.textSecondary} style={{ marginBottom: 12 }}>
+            מצב בדיקות פעיל (anonymous): התנתקות/התחברות יכולה ליצור משתמש חדש ולכן ייתכן שתידרש השלמת פרופיל מחדש.
+          </Typography>
+        )}
+
         <Button 
           title="התנתק" 
           onPress={handleLogout} 

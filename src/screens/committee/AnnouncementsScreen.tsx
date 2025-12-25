@@ -79,6 +79,22 @@ export const AnnouncementsScreen = () => {
 
       if (error) throw error;
 
+      // Push notification to building (best-effort)
+      try {
+        await supabase.functions.invoke('send-push', {
+          body: {
+            type: 'announcement',
+            building_id: profile.building_id,
+            title: 'הודעת ועד הבית',
+            body: title,
+            data: { kind: 'announcement' },
+            exclude_user_id: user?.id,
+          },
+        });
+      } catch (e) {
+        console.log('Failed to send push (announcement):', e);
+      }
+
       setIsCreating(false);
       setTitle('');
       setContent('');

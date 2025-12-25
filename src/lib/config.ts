@@ -1,4 +1,4 @@
-export type AuthMode = 'phone' | 'anonymous';
+export type AuthMode = 'phone' | 'anonymous' | 'pin';
 
 // Default: phone auth (OTP). For now you asked to disable it, so set
 // EXPO_PUBLIC_AUTH_MODE=anonymous in `.env`.
