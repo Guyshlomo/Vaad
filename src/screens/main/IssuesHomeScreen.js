@@ -80,7 +80,9 @@ export default function IssuesHomeScreen() {
 
   const firstName = profile?.full_name?.split(' ')[0] || '';
 
-  if (!hasBuilding) {
+  // דיירים ללא בניין רואים מסך "הצטרף לבניין",
+  // אדמין לעולם לא רואה את זה (הוא נותן את הקוד לאחרים).
+  if (!hasBuilding && !isAdmin) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <AppHeader
@@ -133,64 +135,74 @@ export default function IssuesHomeScreen() {
       );
     }
 
-    if (issues.length === 0) {
-      return (
-        <EmptyState
-          icon="check-circle-outline"
-          title={isAdmin ? 'אין תקלות בבניין' : 'אין תקלות פתוחות'}
-          subtitle={isAdmin ? 'כשדיירים ידווחו תקלה, היא תופיע כאן' : 'הכל מסודר בבניין'}
-          actionLabel={isAdmin ? undefined : 'דווח תקלה'}
-          onAction={isAdmin ? undefined : () => router.push('/modals/report-issue')}
-        />
-      );
-    }
-
     return (
       <>
-        {isAdmin && (
-          <Text style={styles.subtitle}>ניהול תקלות הבניין</Text>
-        )}
-        {sections.map((section) => (
-          <View key={section.key}>
-            {section.data.length > 0 && (
-              <>
-                <SectionHeader
-                  title={`${section.emoji || ''} ${section.title}`.trim()}
-                />
-                <Text style={styles.countBadge}>
-                  {section.data.length} {section.data.length === 1 ? 'תקלה' : 'תקלות'}
-                </Text>
-                {section.data.map((issue) => (
-                  <View key={issue.id} style={styles.cardWrapper}>
-                    {isAdmin ? (
-                      <AdminIssueCard
-                        issue={issue}
-                        onStatusChange={handleStatusChange}
-                        onDelete={(id) => setDeleteTarget(id)}
-                        onPress={() =>
-                          router.push({
-                            pathname: '/modals/issue-details/[issueId]',
-                            params: { issueId: issue.id },
-                          })
-                        }
-                      />
-                    ) : (
-                      <IssueCard
-                        issue={issue}
-                        onPress={() =>
-                          router.push({
-                            pathname: '/modals/issue-details/[issueId]',
-                            params: { issueId: issue.id },
-                          })
-                        }
-                      />
-                    )}
-                  </View>
-                ))}
-              </>
-            )}
-          </View>
-        ))}
+        {isAdmin && <Text style={styles.subtitle}>ניהול תקלות הבניין</Text>}
+
+        {sections.map((section) => {
+          const hasData = section.data.length > 0;
+          const title = `${section.emoji || ''} ${section.title}`.trim();
+
+          // אדמין – תמיד רואה שלוש רובריקות, גם אם ריקות
+          if (isAdmin) {
+            return (
+              <View key={section.key}>
+                <SectionHeader title={title} />
+                {hasData ? (
+                  <>
+                    <Text style={styles.countBadge}>
+                      {section.data.length}{' '}
+                      {section.data.length === 1 ? 'תקלה' : 'תקלות'}
+                    </Text>
+                    {section.data.map((issue) => (
+                      <View key={issue.id} style={styles.cardWrapper}>
+                        <AdminIssueCard
+                          issue={issue}
+                          onStatusChange={handleStatusChange}
+                          onDelete={(id) => setDeleteTarget(id)}
+                          onPress={() =>
+                            router.push({
+                              pathname: '/modals/issue-details/[issueId]',
+                              params: { issueId: issue.id },
+                            })
+                          }
+                        />
+                      </View>
+                    ))}
+                  </>
+                ) : (
+                  <Text style={styles.countBadge}>אין תקלות בסעיף זה</Text>
+                )}
+              </View>
+            );
+          }
+
+          // דיירים – מציגים רק סקשנים עם תקלות
+          if (!hasData) return null;
+
+          return (
+            <View key={section.key}>
+              <SectionHeader title={title} />
+              <Text style={styles.countBadge}>
+                {section.data.length}{' '}
+                {section.data.length === 1 ? 'תקלה' : 'תקלות'}
+              </Text>
+              {section.data.map((issue) => (
+                <View key={issue.id} style={styles.cardWrapper}>
+                  <IssueCard
+                    issue={issue}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/modals/issue-details/[issueId]',
+                        params: { issueId: issue.id },
+                      })
+                    }
+                  />
+                </View>
+              ))}
+            </View>
+          );
+        })}
       </>
     );
   }
